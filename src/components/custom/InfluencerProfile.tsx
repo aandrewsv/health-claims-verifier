@@ -83,7 +83,7 @@ export function InfluencerProfile({
       router.push('/leaderboard');
     } catch (err) {
       console.error(err);
-      setError('Failed to start analysis. Try changig the time period.');
+      setError('Failed to start analysis. Might be a corrupted response from Perplexity. Try again!');
     } finally {
       setIsLoading(false);
     }
