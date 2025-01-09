@@ -83,7 +83,7 @@ export function InfluencerProfile({
       router.push('/leaderboard');
     } catch (err) {
       console.error(err);
-      setError('Failed to start analysis');
+      setError('Failed to start analysis. Try changig the time period.');
     } finally {
       setIsLoading(false);
     }
