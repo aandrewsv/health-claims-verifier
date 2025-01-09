@@ -1,0 +1,19 @@
+flowchart TD
+    A[Input Influencer Name] --> B{Verify Health Influencer}
+    B -->|Not Health Influencer| C[Return Error]
+    B -->|Is Health Influencer| D[Fetch Recent Content]
+    
+    D --> E[Extract Health Claims]
+    E --> F[Deduplicate Claims]
+    
+    F --> G[For Each Unique Claim]
+    G --> H[Categorize Claim]
+    H --> I[Scientific Verification]
+    
+    I --> J{Verification Result}
+    J -->|Verified| K[Add to Verified Pool]
+    J -->|Questionable| L[Add to Questionable Pool]
+    J -->|Debunked| M[Add to Debunked Pool]
+    
+    K & L & M --> N[Calculate Trust Score]
+    N --> O[Update Database]
