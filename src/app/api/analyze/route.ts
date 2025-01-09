@@ -10,6 +10,16 @@ import { AnalysisRequestBody, Claim } from '@/types';
 import pLimit from 'p-limit'; // To control concurrency
 
 // -------------
+// TYPES
+// -------------
+interface RecentClaim {
+  claim_text: string;
+  source_content: string | null;
+  source_platform: string | null;
+  found_date: string | null;
+}
+
+// -------------
 // HELPERS
 // -------------
 function chunkArray<T>(array: T[], chunkSize: number): T[][] {
@@ -93,14 +103,12 @@ export async function POST(req: Request) {
       influencer.canonical_name,
       claimsLimit
     );
-    const recentClaims = await queryPerplexityJSONArray<
-      {
-        claim_text: string;
-        source_content: string | null;
-        source_platform: string | null;
-        found_date: string | null;
-      }[]
-    >(getClaimsPrompt, perplexityConfig);
+    const recentClaims = await queryPerplexityJSONArray<{
+      claim_text: string;
+      source_content: string | null;
+      source_platform: string | null;
+      found_date: string | null;
+    }>(getClaimsPrompt, perplexityConfig);
 
     if (!recentClaims || recentClaims.length === 0) {
       // No claims found
@@ -127,7 +135,9 @@ export async function POST(req: Request) {
     let uniqueClaimsFull = recentClaims; // default assume all are unique
     if (existingClaimTexts.length > 0) {
       //    We'll only pass the 'claim_text' from the new claims to the dedup prompt.
-      const newClaimTexts = recentClaims.map((c) => c.claim_text);
+      // Ensure recentClaims is treated as RecentClaim[]
+      const typedRecentClaims = recentClaims as RecentClaim[];
+      const newClaimTexts = typedRecentClaims.map((c) => c.claim_text);
       const newClaimsBatches = chunkArray(newClaimTexts, 10); // chunk size 10 for dedup
       const limit = pLimit(3); // up to 3 concurrent requests for dedup
 
@@ -143,16 +153,14 @@ export async function POST(req: Request) {
         newClaimsBatches.map((batch) =>
           limit(async () => {
             const dedupPrompt = DEDUP_PROMPT(batch, existingClaimTexts);
-            const result = await queryPerplexityJSONArray<
-              {
-                new_claim_text: string;
-                is_duplicate: boolean;
-                matched_existing_claim_text: string | null;
-                similarity_score: number;
-              }[]
-            >(dedupPrompt, { max_tokens: 4000, temperature: 0, top_p: 1 });
+            const result = await queryPerplexityJSONArray<{
+              new_claim_text: string;
+              is_duplicate: boolean;
+              matched_existing_claim_text: string | null;
+              similarity_score: number;
+            }>(dedupPrompt, { max_tokens: 4000, temperature: 0, top_p: 1 });
 
-            dedupResults = dedupResults.concat(result);
+            dedupResults = [...dedupResults, ...result];
           })
         )
       );
@@ -163,7 +171,7 @@ export async function POST(req: Request) {
         .map((r) => r.new_claim_text);
 
       // 5. Build a "uniqueClaims" array with full data from recentClaims
-      uniqueClaimsFull = recentClaims.filter((cl) =>
+      uniqueClaimsFull = typedRecentClaims.filter((cl) =>
         uniqueClaimTexts.includes(cl.claim_text)
       );
     }
@@ -210,7 +218,7 @@ export async function POST(req: Request) {
       const batchPromises = classifyBatches.map((batch) =>
         classifyLimit(async () => {
           try {
-            const batchTexts = batch.map((b) => b.claim_text);
+            const batchTexts = (batch as RecentClaim[]).map((b) => b.claim_text);
             console.log('Processing classification batch:', batchTexts);
 
             const classifyPrompt = CLASSIFICATION_PROMPT(
@@ -219,9 +227,10 @@ export async function POST(req: Request) {
             );
             console.log('Classification prompt:', classifyPrompt);
 
-            const batchResult = await queryPerplexityJSONArray<
-              ClassificationResult[]
-            >(classifyPrompt, { max_tokens: 4000, temperature: 0, top_p: 1 });
+            const batchResult = await queryPerplexityJSONArray<ClassificationResult>(
+              classifyPrompt,
+              { max_tokens: 4000, temperature: 0, top_p: 1 }
+            );
 
             console.log('Raw batch result:', batchResult);
 
@@ -272,7 +281,7 @@ export async function POST(req: Request) {
       const processedClaimTexts = new Set(
         finalClassificationResults.map((r) => r.claim_text)
       );
-      const missingClaims = uniqueClaimsFull.filter(
+      const missingClaims = (uniqueClaimsFull as RecentClaim[]).filter(
         (c) => !processedClaimTexts.has(c.claim_text)
       );
 
@@ -302,7 +311,7 @@ export async function POST(req: Request) {
     const claimsToInsert = finalClassificationResults
       .map((fc) => {
         // Find the original claim object
-        const original = uniqueClaimsFull.find(
+        const original = (uniqueClaimsFull as RecentClaim[]).find(
           (u) => u.claim_text === fc.claim_text
         );
 

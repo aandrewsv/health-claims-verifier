@@ -195,7 +195,7 @@ export async function queryPerplexityJSONObject<T>(
 export async function queryPerplexityJSONArray<T>(
   prompt: string,
   config?: PerplexityConfig
-): Promise<T> {
+): Promise<T[]> {
   try {
     // 1. Make the API call
     const response = await queryPerplexity(prompt, { ...config });
